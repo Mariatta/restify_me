@@ -116,6 +116,8 @@ class TextToRest:
         self.path = path
         with open(self.path, 'r') as file:
             self.all_lines = file.readlines()
+        if "Content-Type: text/x-rst\n" in self.all_lines:
+            raise Exception("All is good!")
 
     def handle_content_type_header(self, current_line, prev_line):
         """
@@ -252,8 +254,12 @@ if __name__ == '__main__':
     parser = ArgumentParser(description="convert text to reST")
     parser.add_argument("filename")
     args = parser.parse_args()
-    text_to_rest = TextToRest(args.filename)
-    text_to_rest.convert()
-    text_to_rest.process_local_vars()
-    text_to_rest.link_references()
-    text_to_rest.writeout()
+    try:
+        text_to_rest = TextToRest(args.filename)
+    except:
+        print("PEP is already in reST")
+    else:
+        text_to_rest.convert()
+        text_to_rest.process_local_vars()
+        text_to_rest.link_references()
+        text_to_rest.writeout()
