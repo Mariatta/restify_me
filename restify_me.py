@@ -139,27 +139,28 @@ class TextToRest:
     """
     Read a text file and attempt to convert it to reST
     """
-    temp_output_filename = "./result.rst"
-
-    output = []
-    all_lines = []
-    has_references_section = False
-    has_local_vars_section = False
-    is_references_section = False
-    restifiable = True
-
-    references = []
-
-    last_ref_id = ""
 
     def __init__(self, path):
         self.path = path
+        self.output = []
+        self.all_lines = []
+        self.has_references_section = False
+        self.has_local_vars_section = False
+        self.is_references_section = False
+        self.restifiable = True
+        self.references = []
+        self.last_ref_id = ""
+
         with open(self.path, 'r') as file:
             self.all_lines = file.readlines()
         if "Content-Type: text/x-rst\n".lower() in \
                 map(lambda x: x.lower(), self.all_lines):
             self.restifiable = False
             raise ConversionNotRequiredError(path)
+
+    @property
+    def out_filename(self):
+        return os.path.join(os.getcwd(), 'output', os.path.basename(self.path))
 
     @can_restify
     def handle_content_type_header(self, current_line, prev_line):
@@ -298,22 +299,25 @@ class TextToRest:
         write to result.rst
         :return:
         """
-        with open(self.temp_output_filename, 'w') as file:
+        with open(self.out_filename, 'w+') as file:
             file.writelines(self.output)
 
 
-if __name__ == '__main__':
-    parser = ArgumentParser(description="convert text to reST")
-    parser.add_argument("filename")
-    args = parser.parse_args()
+def restify(pep_filename):
     try:
-        text_to_rest = TextToRest(args.filename)
+        text_to_rest = TextToRest(pep_filename)
     except ConversionNotRequiredError as err:
         print(err.message)
     except FileNotFoundError:
-        print("File {} is not found.".format(args.filename))
+        print("File {} is not found.".format(pep_filename))
     else:
         text_to_rest.convert()
         text_to_rest.process_local_vars()
         text_to_rest.link_references()
         text_to_rest.writeout()
+
+if __name__ == '__main__':
+    parser = ArgumentParser(description="convert text to reST")
+    parser.add_argument("filename")
+    args = parser.parse_args()
+    restify(args.filename)
