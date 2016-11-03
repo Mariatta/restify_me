@@ -2,36 +2,6 @@ import os
 from argparse import ArgumentParser
 
 
-def can_restify(f):
-    """
-    decorator, proceed only if file can be reSTified
-    """
-    def wrapper(*args):
-        if args[0].restifiable:
-            return f(*args)
-    return wrapper
-
-
-def has_local_vars(f):
-    """
-    decorator, proceed only if file contains "Local vars:"
-    """
-    def wrapper(*args):
-        if args[0].has_local_vars_section:
-            return f(*args)
-    return wrapper
-
-
-def has_references(f):
-    """
-    decorator, proceed only if file contains "References"
-    """
-    def wrapper(*args):
-        if args[0].has_references_section:
-            return f(*args)
-    return wrapper
-
-
 class LineObj:
     """
     Represents a line in a PEP file
@@ -162,7 +132,6 @@ class TextToRest:
     def out_filename(self):
         return os.path.join(os.getcwd(), 'output', os.path.basename(self.path))
 
-    @can_restify
     def handle_content_type_header(self, current_line, prev_line):
         """
         if content type is missing, add it
@@ -179,8 +148,6 @@ class TextToRest:
             self.output.append("Content-Type: text/x-rst")
             self.output.append(os.linesep)
 
-    @can_restify
-    @has_local_vars
     def process_local_vars(self):
         """ take care of Local variables at the end of PEP """
         local_vars = self.all_lines[
@@ -190,8 +157,6 @@ class TextToRest:
         for line in local_vars:
             self.output.append("  {}".format(line))
 
-    @can_restify
-    @has_references
     def process_reference_line(self, line_obj):
         stripped_text = line_obj.output.strip()
         if line_obj.is_blank:
@@ -212,14 +177,12 @@ class TextToRest:
                     stripped_text))
             self.output.append(os.linesep)
 
-    @can_restify
     def handle_paragraph(self, line_obj):
         if line_obj.is_indented:
             self.output.append(line_obj.deindent)
         else:
             self.output.append(line_obj.output)
 
-    @can_restify
     def convert(self):
         """
         enumerate through all lines and process them one by one
@@ -272,8 +235,6 @@ class TextToRest:
                             current_line_obj
                         )
 
-    @can_restify
-    @has_references
     def link_references(self):
         """
         go through everything one more time, updating links to references
@@ -312,8 +273,10 @@ def restify(pep_filename):
         print("File {} is not found.".format(pep_filename))
     else:
         text_to_rest.convert()
-        text_to_rest.process_local_vars()
-        text_to_rest.link_references()
+        if text_to_rest.has_local_vars_section:
+            text_to_rest.process_local_vars()
+        if text_to_rest.has_references_section:
+            text_to_rest.link_references()
         text_to_rest.writeout()
 
 if __name__ == '__main__':
