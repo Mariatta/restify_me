@@ -12,7 +12,7 @@ class LineObj:
 
     @property
     def indentation(self):
-        return len(self.line) - len(self.line.strip())
+        return len(self.line) - len(self.line.lstrip())
 
     @property
     def is_indented(self):
@@ -28,11 +28,11 @@ class LineObj:
 
     @property
     def is_pep_type_header(self):
-        return self.line.startswith("Type: ")
+        return self.line.lower().startswith("Type: ".lower())
 
     @property
     def is_content_type_header(self):
-        return self.line.startswith("Content-Type: ")
+        return self.line.lower().startswith("Content-Type: ".lower())
 
     @property
     def deindent(self):
@@ -45,7 +45,7 @@ class LineObj:
 
     @property
     def is_local_vars(self):
-        return self.line == 'Local Variables:'
+        return self.line.strip().lower() == 'Local Variables:'.lower()
 
     @property
     def is_literal_block(self):
@@ -78,7 +78,7 @@ class LineObj:
 def is_section_heading(current_line, prev_line, next_line):
     """
     Detects first level section heading, which is
-    A line that has empty line before and after is a section heading
+    a line that has empty line before and after
     """
     return (
         not current_line.is_blank
@@ -97,35 +97,45 @@ def is_missing_content_type_header(current_line, prev_line):
         and not current_line.is_content_type_header
 
 
+class ConversionNotRequiredError(Exception):
+    """
+    Raised when PEP is already in text/x-rst format
+    """
+    def __init__(self, filename):
+        self.message = "{} is already in text/x-rst format.".format(filename)
+
+
 class TextToRest:
     """
     Read a text file and attempt to convert it to reST
     """
-    temp_output_filename = "./result.rst"
-
-    output = []
-    all_lines = []
-
-    is_references_section = False
-
-    references = []
-
-    last_ref_id = ""
 
     def __init__(self, path):
         self.path = path
+        self.output = []
+        self.all_lines = []
+        self.has_references_section = False
+        self.has_local_vars_section = False
+        self.is_references_section = False
+        self.restifiable = True
+        self.references = []
+        self.last_ref_id = ""
+
         with open(self.path, 'r') as file:
             self.all_lines = file.readlines()
-        if "Content-Type: text/x-rst\n" in self.all_lines:
-            raise Exception("All is good!")
+        if "Content-Type: text/x-rst\n".lower() in \
+                map(lambda x: x.lower(), self.all_lines):
+            self.restifiable = False
+            raise ConversionNotRequiredError(path)
+
+    @property
+    def out_filename(self):
+        return os.path.join(os.getcwd(), 'output', os.path.basename(self.path))
 
     def handle_content_type_header(self, current_line, prev_line):
         """
         if content type is missing, add it
         if content type is present, ensure it is rst
-        :param current_line:
-        :param prev_line:
-        :return:
         """
         if current_line.is_content_type_header:
             # ensure it is reST
@@ -175,9 +185,8 @@ class TextToRest:
 
     def convert(self):
         """
-        read all lines in file, and process them one by one
+        enumerate through all lines and process them one by one
         """
-
         for index, line in enumerate(self.all_lines):
             if index == 0:
                 # this is the first line of the file, eg PEP: XXX header
@@ -205,14 +214,17 @@ class TextToRest:
                     self.output.append(
                         current_line_obj.section_header_underline)
                     self.output.append(os.linesep)
-                    if stripped == "References":
+
+                    if stripped.lower() == "References".lower():
                         self.is_references_section = True
+                        self.has_references_section = True
                     elif self.is_references_section:
                         # we were in references section, and now moved on
                         self.is_references_section = False
                         self.last_ref_id = ""
 
                 elif current_line_obj.is_local_vars:
+                    self.has_local_vars_section = True
                     return
 
                 else:
@@ -231,11 +243,13 @@ class TextToRest:
         into
             [1]_
         """
-        ref_section_index = self.output.index("References")
+        ref_section_index = [out.lower() for out in self.output].index(
+            "References".lower())
         for index, line in enumerate(self.output):
             for ref in self.references:
                 potential_ref_link = "[{}]".format(ref)
-                if potential_ref_link in line and index < ref_section_index:
+                if potential_ref_link in line \
+                        and index < ref_section_index:
                     line = line.replace(
                         potential_ref_link,
                         "{}_".format(potential_ref_link))
@@ -246,20 +260,27 @@ class TextToRest:
         write to result.rst
         :return:
         """
-        with open(self.temp_output_filename, 'w') as file:
+        with open(self.out_filename, 'w+') as file:
             file.writelines(self.output)
 
+
+def restify(pep_filename):
+    try:
+        text_to_rest = TextToRest(pep_filename)
+    except ConversionNotRequiredError as err:
+        print(err.message)
+    except FileNotFoundError:
+        print("File {} is not found.".format(pep_filename))
+    else:
+        text_to_rest.convert()
+        if text_to_rest.has_local_vars_section:
+            text_to_rest.process_local_vars()
+        if text_to_rest.has_references_section:
+            text_to_rest.link_references()
+        text_to_rest.writeout()
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="convert text to reST")
     parser.add_argument("filename")
     args = parser.parse_args()
-    try:
-        text_to_rest = TextToRest(args.filename)
-    except:
-        print("PEP is already in reST")
-    else:
-        text_to_rest.convert()
-        text_to_rest.process_local_vars()
-        text_to_rest.link_references()
-        text_to_rest.writeout()
+    restify(args.filename)
