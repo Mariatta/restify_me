@@ -187,6 +187,7 @@ class TextToRest:
         """
         enumerate through all lines and process them one by one
         """
+        prev_indentation = 0
         for index, line in enumerate(self.all_lines):
             if index == 0:
                 # this is the first line of the file, eg PEP: XXX header
@@ -195,6 +196,15 @@ class TextToRest:
             else:
                 prev_line_obj = LineObj(self.all_lines[index-1].rstrip())
                 current_line_obj = LineObj(line.rstrip())
+
+                if not current_line_obj.is_blank:
+                    if current_line_obj.indentation_level > prev_indentation:
+                        prev_indentation = current_line_obj.indentation_level
+                    elif current_line_obj.indentation_level < prev_indentation:
+                        prev_indentation = current_line_obj.indentation_level
+                    #else:
+                        # indent level is the same
+
                 if index < (len(self.all_lines) - 1):
                     next_line_obj = LineObj(self.all_lines[index+1].rstrip())
                 else:
