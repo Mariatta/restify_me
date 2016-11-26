@@ -5,3 +5,4 @@ divmod(x)
 divmod(x, *divs)
 divmod(dividend, *divisors)
 divmod(dividend, divisor)
+TypeError
