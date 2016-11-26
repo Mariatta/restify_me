@@ -1,6 +1,26 @@
 import os
 from argparse import ArgumentParser
 
+PEP_HEADERS = [
+    "PEP",
+    "Title",
+    "Version",
+    "Last-Modified",
+    "Author",
+    "BDFL-Delegate",
+    "Discussions-To",
+    "Status",
+    "Type",
+    "Content-Type",
+    "Requires",
+    "Created",
+    "Python-Version",
+    "Post-History",
+    "Replaces",
+    "Superseded-By",
+    "Resolution"
+]
+
 
 class LineObj:
     """
@@ -48,16 +68,17 @@ class LineObj:
         return self.line.strip().lower() == 'Local Variables:'.lower()
 
     @property
-    def is_literal_block(self):
-        return self.line.endswith(':')
+    def ends_with_colon(self):
+        return self.line.rstrip().endswith(':')
 
     @property
     def output(self):
-        if "*" in self.line and self.line.count("*") == 1 and \
-                        self.line[self.line.index("*") + 1] != " ":
-            self.line = self.line.replace("*", "``*``")
+        # this portion is causing trouble :( look into it next
+        # if "*" in self.line and self.line.count("*") == 1 and \
+        #                 self.line[self.line.index("*") + 1] != " ":
+        #     self.line = self.line.replace("*", "``*``")
 
-        if self.is_literal_block:
+        if self.ends_with_colon and not self.is_pep_header:
             return "{}:{}{}".format(self.line, os.linesep, os.linesep)
         else:
             return "{}{}".format(self.line, os.linesep)
@@ -73,6 +94,18 @@ class LineObj:
             return "-" * len(self.line.strip(':'))
         else:
             return "'" * len(self.line.strip(':'))
+
+    @property
+    def is_pep_header(self):
+        """
+        returns True if line is a PEP header
+        """
+        stripped = self.line.lstrip()
+        if stripped.index(":") > 0:
+            text = stripped[:stripped.index(':')]
+            if text in PEP_HEADERS:
+                return True
+        return False
 
 
 def is_section_heading(current_line, prev_line, next_line):
@@ -180,7 +213,7 @@ class TextToRest:
     def handle_paragraph(self, line_obj):
         if line_obj.is_indented:
             self.output.append(line_obj.deindent)
-        else:
+        elif not line_obj.is_content_type_header:
             self.output.append(line_obj.output)
 
     def convert(self):
