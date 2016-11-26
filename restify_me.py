@@ -252,6 +252,10 @@ class TextToRest:
                         next_line_obj):
                     stripped = current_line_obj.line.rstrip(':')
 
+                    # ensure there are two blank lines before section heading
+                    if len(self.output[-2].strip()) > 0:
+                        self.output.append(os.linesep)
+
                     self.output.append(stripped)
                     self.output.append(os.linesep)
                     self.output.append(
