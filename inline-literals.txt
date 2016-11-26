@@ -6,3 +6,6 @@ divmod(x, *divs)
 divmod(dividend, *divisors)
 divmod(dividend, divisor)
 TypeError
+ProcessIOWrapper
+asyncread
+asyncwrite
