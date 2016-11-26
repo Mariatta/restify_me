@@ -21,6 +21,9 @@ PEP_HEADERS = [
     "Resolution"
 ]
 
+INLINE_LITERALS = []
+with open("./inline-literals.txt") as file:
+    INLINE_LITERALS = [line.strip() for line in file.readlines()]
 
 class LineObj:
     """
@@ -78,11 +81,15 @@ class LineObj:
 
     @property
     def output(self):
-        if not self.is_code_block \
-                and "*" in self.line \
+        if not self.is_code_block:
+            if "*" in self.line \
                 and self.line.count("*") == 1 \
                 and self.line[self.line.index("*") + 1] != " ":
-            self.line = self.line.replace("*", "\*")
+                self.line = self.line.replace("*", "\*")
+            for inline_literal in INLINE_LITERALS:
+                if inline_literal in self.line and not self.is_pep_header:
+                    self.line = self.line.replace(
+                        inline_literal, "``{}``".format(inline_literal))
 
         if self.ends_with_colon \
                 and not self.is_pep_header \
@@ -109,7 +116,7 @@ class LineObj:
         returns True if line is a PEP header
         """
         stripped = self.line.lstrip()
-        if stripped.index(":") > 0:
+        if ":" in stripped and stripped.index(":") > 0:
             text = stripped[:stripped.index(':')]
             if text in PEP_HEADERS:
                 return True

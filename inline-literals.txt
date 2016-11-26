@@ -1,0 +1,7 @@
+divmod()
+__builtin__
+divmod("spam")
+divmod(x)
+divmod(x, *divs)
+divmod(dividend, *divisors)
+divmod(dividend, divisor)
