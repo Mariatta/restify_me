@@ -29,6 +29,7 @@ class LineObj:
 
     def __init__(self, line):
         self.line = line
+        self.is_code_block = False
 
     @property
     def indentation(self):
@@ -56,8 +57,12 @@ class LineObj:
 
     @property
     def deindent(self):
+        if self.is_code_block:
+            multiplier = 4
+        else:
+            multiplier = 3
         if self.indentation_level >= 1:
-            return "{}{}{}".format(" " * 3 * (self.indentation_level -1),
+            return "{}{}{}".format(" " * multiplier * (self.indentation_level -1),
                                  self.output.strip(),
                                  os.linesep)
         else:
@@ -73,12 +78,15 @@ class LineObj:
 
     @property
     def output(self):
-        # this portion is causing trouble :( look into it next
-        # if "*" in self.line and self.line.count("*") == 1 and \
-        #                 self.line[self.line.index("*") + 1] != " ":
-        #     self.line = self.line.replace("*", "``*``")
+        if not self.is_code_block \
+                and "*" in self.line \
+                and self.line.count("*") == 1 \
+                and self.line[self.line.index("*") + 1] != " ":
+            self.line = self.line.replace("*", "\*")
 
-        if self.ends_with_colon and not self.is_pep_header:
+        if self.ends_with_colon \
+                and not self.is_pep_header \
+                and not self.is_code_block:
             return "{}:{}{}".format(self.line, os.linesep, os.linesep)
         else:
             return "{}{}".format(self.line, os.linesep)
@@ -220,7 +228,6 @@ class TextToRest:
         """
         enumerate through all lines and process them one by one
         """
-        prev_indentation = 0
         for index, line in enumerate(self.all_lines):
             if index == 0:
                 # this is the first line of the file, eg PEP: XXX header
@@ -231,12 +238,21 @@ class TextToRest:
                 current_line_obj = LineObj(line.rstrip())
 
                 if not current_line_obj.is_blank:
-                    if current_line_obj.indentation_level > prev_indentation:
-                        prev_indentation = current_line_obj.indentation_level
-                    elif current_line_obj.indentation_level < prev_indentation:
-                        prev_indentation = current_line_obj.indentation_level
-                    #else:
-                        # indent level is the same
+                    found_blank_line = False
+                    # look up the preceeding lines
+                    # if the paragraph above is indented less than current
+                    # and ends with colon,
+                    # then the current line is likely a code block
+                    for seen in reversed(self.output):
+                        seen_obj = LineObj(seen)
+                        if not found_blank_line and seen_obj.is_blank:
+                            found_blank_line = True
+                        if found_blank_line and not seen_obj.is_blank \
+                            and seen_obj.indentation_level \
+                                        < current_line_obj.indentation_level:
+                            if seen_obj.ends_with_colon:
+                                current_line_obj.is_code_block = True
+                            break
 
                 if index < (len(self.all_lines) - 1):
                     next_line_obj = LineObj(self.all_lines[index+1].rstrip())
