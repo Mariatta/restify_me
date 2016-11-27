@@ -9,3 +9,12 @@ TypeError
 ProcessIOWrapper
 asyncread
 asyncwrite
+strftime()
+str(value)
+ValueError
+__format__
+len()
+str()
+locals()
+Python/bltinmodule.c
+builtin_divmod()
