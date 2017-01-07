@@ -81,22 +81,27 @@ class LineObj:
 
     @property
     def output(self):
-        if not self.is_code_block:
-            if "*" in self.line \
-                and self.line.count("*") == 1 \
-                and self.line[self.line.index("*") + 1] != " ":
-                self.line = self.line.replace("*", "\*")
-            for inline_literal in INLINE_LITERALS:
-                if inline_literal in self.line and not self.is_pep_header:
-                    self.line = self.line.replace(
-                        inline_literal, "``{}``".format(inline_literal))
+        try:
+            if not self.is_code_block:
+                if "*" in self.line \
+                    and self.line.count("*") == 1 \
+                    and len(self.line) > (self.line.index("*") + 1) \
+                    and self.line[self.line.index("*") + 1] != " ":
+                    self.line = self.line.replace("*", "\*")
+                for inline_literal in INLINE_LITERALS:
+                    if inline_literal in self.line and not self.is_pep_header:
+                        self.line = self.line.replace(
+                            inline_literal, "``{}``".format(inline_literal))
 
-        if self.ends_with_colon \
-                and not self.is_pep_header \
-                and not self.is_code_block:
-            return "{}:{}{}".format(self.line, os.linesep, os.linesep)
-        else:
-            return "{}{}".format(self.line, os.linesep)
+            if self.ends_with_colon \
+                    and not self.is_pep_header \
+                    and not self.is_code_block:
+                return "{}:{}{}".format(self.line, os.linesep, os.linesep)
+            else:
+                return "{}{}".format(self.line, os.linesep)
+        except Exception as e:
+            print(f"failed at line {self.line} :(")
+            raise e
 
     @property
     def section_header_underline(self):
@@ -341,6 +346,9 @@ def restify(pep_filename):
         print(err.message)
     except FileNotFoundError:
         print("File {} is not found.".format(pep_filename))
+    except Exception as e:
+        print(f"Error in file {pep_filename}: {e.__repr__()} ")
+        raise e
     else:
         text_to_rest.convert()
         if text_to_rest.has_local_vars_section:
@@ -348,6 +356,8 @@ def restify(pep_filename):
         if text_to_rest.has_references_section:
             text_to_rest.link_references()
         text_to_rest.writeout()
+        return text_to_rest
+
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="convert text to reST")

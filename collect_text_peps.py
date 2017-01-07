@@ -1,5 +1,7 @@
 from argparse import ArgumentParser
+from operator import itemgetter
 from restify_me import restify
+
 import glob, os
 
 
@@ -50,10 +52,24 @@ def restify_text_peps(pep_repo_path):
 
     print("Found {} PEPs still in plain text".format(len(failed) + len(success)))
     print("{} text PEPs converted :D".format(len(success)))
-    print("Failed to reSTify {} PEPs :(".format(len(failed)))
-    for filename, error in failed:
-        print("{} because: {} :(".format(
-            filename, error))
+    if failed:
+        print("Failed to reSTify {} PEPs :(".format(len(failed)))
+        for filename, error in failed:
+            print("{} because: {} :(".format(
+                filename, error))
+
+    files_and_length = []
+    for s in success:
+        output_filename = s.replace("../peps", "./output")
+        with open(output_filename) as output_file:
+            file_length = len(output_file.readlines())
+            files_and_length.append({'filename': output_filename,
+                                     'file_length': file_length})
+
+    sorted_list = sorted(files_and_length, key=itemgetter('file_length'))
+
+    for item in sorted_list:
+        print(f"{item['filename']}, {item['file_length']} lines")
 
 
 if __name__ == '__main__':
