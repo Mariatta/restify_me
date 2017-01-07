@@ -35,3 +35,10 @@ x*n
 PyRange_New()
 onlinehelp
 onlinehelp.displayhelp(object_or_string)
+PyObject_Str()
+PyString_New()
+decode_header()
+unicode()
+email.header_decode()
+email.Header.decode_header()
+
