@@ -337,7 +337,8 @@ class TextToRest:
 
             for ref in self.references:
                 potential_ref_link = "[{}]".format(ref)
-                if potential_ref_link in line \
+
+                if potential_ref_link in line['out'] \
                         and index < ref_section_index:
                     line['out'] = line['out'].replace(
                         potential_ref_link,
