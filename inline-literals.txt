@@ -28,7 +28,6 @@ PRINT_EXPR
 displayhook()
 Py.printResult
 sys.displayhook
-sys
 xrange()
 x[i:j]
 x*n
@@ -41,4 +40,3 @@ decode_header()
 unicode()
 email.header_decode()
 email.Header.decode_header()
-
