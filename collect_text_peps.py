@@ -3,8 +3,10 @@ from operator import itemgetter
 from restify_me import restify
 
 import glob, os
+import shutil
 
-
+BACKUPS_DIR = "./backups"
+MAX_TO_COPY = 1
 def clear_output_dir():
     """
     remove output from previous run
@@ -30,7 +32,7 @@ def text_peps(pep_repo_path):
                 yield filename
 
 
-def restify_text_peps(pep_repo_path):
+def restify_text_peps(pep_repo_path, copy_to_origin=False):
     """
     1. find all plain text PEPs
     2. restify
@@ -41,6 +43,9 @@ def restify_text_peps(pep_repo_path):
     failed = []
     success = []
     clear_output_dir()
+    if copy_to_origin:
+        if not os.path.exists("./backups"):
+            os.makedirs("./backups")
     for filename in text_peps(pep_repo_path):
         try:
             restify(filename)
@@ -64,16 +69,30 @@ def restify_text_peps(pep_repo_path):
         with open(output_filename) as output_file:
             file_length = len(output_file.readlines())
             files_and_length.append({'filename': output_filename,
-                                     'file_length': file_length})
+                                     'file_length': file_length,
+                                     'original_filename': s
+                                     })
 
     sorted_list = sorted(files_and_length, key=itemgetter('file_length'))
 
+    num_to_copy = 0
     for item in sorted_list:
         print(f"{item['filename']}, {item['file_length']} lines")
+        if copy_to_origin and num_to_copy < 1:
+            origin_path = item['original_filename']
+            backup_path = origin_path.replace("../peps", BACKUPS_DIR)
+            shutil.copy(origin_path, backup_path)
+            shutil.copy(item['filename'], origin_path)
+            print(f"backed up and copied {item['filename']}")
+            num_to_copy = num_to_copy + 1
 
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Collect plain text PEPs")
     parser.add_argument("pep_path")
+    parser.add_argument('--copy', dest='copy', action='store_true')
+    parser.set_defaults(feature=True)
     args = parser.parse_args()
-    restify_text_peps(args.pep_path)
+    restify_text_peps(args.pep_path, args.copy)
+
+

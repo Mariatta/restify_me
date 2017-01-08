@@ -40,3 +40,5 @@ decode_header()
 unicode()
 email.header_decode()
 email.Header.decode_header()
+NAME
+IMPORT_FROM
