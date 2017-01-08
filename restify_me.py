@@ -31,6 +31,7 @@ class LineObj:
     """
 
     def __init__(self, line):
+        self.original_line = line
         self.line = line
         self.is_code_block = False
 
@@ -165,7 +166,7 @@ class TextToRest:
 
     def __init__(self, path):
         self.path = path
-        self.output = []
+        self.outputs = []
         self.all_lines = []
         self.has_references_section = False
         self.has_local_vars_section = False
@@ -192,49 +193,55 @@ class TextToRest:
         """
         if current_line.is_content_type_header:
             # ensure it is reST
-            self.output.append("Content-Type: text/x-rst")
-            self.output.append(os.linesep)
+            self.outputs.append({"out": "Content-Type: text/x-rst"})
+            self.outputs.append({"out": os.linesep})
         elif is_missing_content_type_header(
                 current_line,
                 prev_line):
             # content type header is missing, inject it
-            self.output.append("Content-Type: text/x-rst")
-            self.output.append(os.linesep)
+            self.outputs.append({"out": "Content-Type: text/x-rst"})
+            self.outputs.append({"out": os.linesep})
 
     def process_local_vars(self):
         """ take care of Local variables at the end of PEP """
         local_vars = self.all_lines[
                      self.all_lines.index("Local Variables:\n"):]
-        self.output.append("..")
-        self.output.append(os.linesep)
+        self.outputs.append({"out": ".."})
+        self.outputs.append({"out": os.linesep})
         for line in local_vars:
-            self.output.append("  {}".format(line))
+            self.outputs.append({"out": "  {}".format(line),
+                                 "original": line})
 
     def process_reference_line(self, line_obj):
         stripped_text = line_obj.output.strip()
         if line_obj.is_blank:
-            self.output.append(os.linesep)
+            self.outputs.append({"out": os.linesep})
         elif stripped_text.startswith('['):
             # figure out the reference number so we know how to indent
             self.last_ref_id = \
                 stripped_text[stripped_text.index("[")+1:stripped_text.index("]")]
             self.references.append(self.last_ref_id)
-            self.output.append(
-                ".. {}".format(
-                    stripped_text))
-            self.output.append(os.linesep)
+            self.outputs.append(
+                {"out": ".. {}".format(
+                    stripped_text),
+                "original": line_obj.original_line})
+            self.outputs.append({"out": os.linesep})
         else:
-            self.output.append(
-                "{}{}".format(
+            self.outputs.append(
+                {"out": "{}{}".format(
                     " " * (6 + len(self.last_ref_id)),
-                    stripped_text))
-            self.output.append(os.linesep)
+                    stripped_text),
+                "original": line_obj.original_line
+                })
+            self.outputs.append({"out": os.linesep})
 
     def handle_paragraph(self, line_obj):
         if line_obj.is_indented:
-            self.output.append(line_obj.deindent)
+            self.outputs.append({"out": line_obj.deindent,
+                                 "original": line_obj.original_line})
         elif not line_obj.is_content_type_header:
-            self.output.append(line_obj.output)
+            self.outputs.append({"out": line_obj.output,
+                                 "original": line_obj.original_line})
 
     def convert(self):
         """
@@ -244,7 +251,7 @@ class TextToRest:
             if index == 0:
                 # this is the first line of the file, eg PEP: XXX header
                 # just print it out as is
-                self.output.append(line)
+                self.outputs.append({"out": line})
             else:
                 prev_line_obj = LineObj(self.all_lines[index-1].rstrip())
                 current_line_obj = LineObj(line.rstrip())
@@ -255,10 +262,14 @@ class TextToRest:
                     # if the paragraph above is indented less than current
                     # and ends with colon,
                     # then the current line is likely a code block
-                    for seen in reversed(self.output):
-                        seen_obj = LineObj(seen)
+                    for seen in reversed(self.outputs):
+                        seen_obj = LineObj(seen['out'])
+                        if seen.get('original'):
+                            seen_obj = LineObj(seen['original'])
+
                         if not found_blank_line and seen_obj.is_blank:
                             found_blank_line = True
+
                         if found_blank_line and not seen_obj.is_blank \
                             and seen_obj.indentation_level \
                                         < current_line_obj.indentation_level:
@@ -281,14 +292,15 @@ class TextToRest:
                     stripped = current_line_obj.line.rstrip(':')
 
                     # ensure there are two blank lines before section heading
-                    if len(self.output[-2].strip()) > 0:
-                        self.output.append(os.linesep)
+                    if len(self.outputs[-2]['out'].strip()) > 0:
+                        self.outputs.append({"out": os.linesep})
 
-                    self.output.append(stripped)
-                    self.output.append(os.linesep)
-                    self.output.append(
-                        current_line_obj.section_header_underline)
-                    self.output.append(os.linesep)
+                    self.outputs.append({"out": stripped,
+                                         "original": current_line_obj.original_line})
+                    self.outputs.append({"out": os.linesep})
+                    self.outputs.append(
+                        {"out": current_line_obj.section_header_underline})
+                    self.outputs.append({"out": os.linesep})
 
                     if stripped.lower() == "References".lower():
                         self.is_references_section = True
@@ -318,17 +330,20 @@ class TextToRest:
         into
             [1]_
         """
-        ref_section_index = [out.lower() for out in self.output].index(
+        ref_section_index = [out['out'].lower() for out in self.outputs].index(
             "References".lower())
-        for index, line in enumerate(self.output):
+
+        for index, line in enumerate(self.outputs):
+
             for ref in self.references:
                 potential_ref_link = "[{}]".format(ref)
                 if potential_ref_link in line \
                         and index < ref_section_index:
-                    line = line.replace(
+                    line['out'] = line['out'].replace(
                         potential_ref_link,
                         "{}_".format(potential_ref_link))
-                    self.output[index] = line
+
+                    self.outputs[index] = line
 
     def writeout(self):
         """
@@ -336,7 +351,8 @@ class TextToRest:
         :return:
         """
         with open(self.out_filename, 'w+') as file:
-            file.writelines(self.output)
+            for line_dict in self.outputs:
+                file.write(line_dict['out'])
 
 
 def restify(pep_filename):
