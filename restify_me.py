@@ -1,5 +1,6 @@
 import os
 from argparse import ArgumentParser
+import re
 
 PEP_HEADERS = [
     "PEP",
@@ -25,6 +26,9 @@ INLINE_LITERALS = []
 with open("./inline-literals.txt") as file:
     INLINE_LITERALS = [line.strip() for line in file.readlines()]
 
+
+NUMBERED_LIST_PATTERN = re.compile("\d+\. +")
+
 class LineObj:
     """
     Represents a line in a PEP file
@@ -34,6 +38,8 @@ class LineObj:
         self.original_line = line
         self.line = line
         self.is_code_block = False
+        self.list_item_overflow = False
+        self.list_item_prefix = None
 
     @property
     def indentation(self):
@@ -66,7 +72,13 @@ class LineObj:
         else:
             multiplier = 3
         if self.indentation_level >= 1:
-            return "{}{}{}".format(" " * multiplier * (self.indentation_level -1),
+            if self.list_item_overflow:
+                return "{}{}{}{}".format(" " * multiplier * (self.indentation_level -1),
+                                 self.list_item_prefix,
+                                 self.output.strip(),
+                                 os.linesep)
+            else:
+                return "{}{}{}".format(" " * multiplier * (self.indentation_level -1),
                                  self.output.strip(),
                                  os.linesep)
         else:
@@ -127,6 +139,23 @@ class LineObj:
             if text in PEP_HEADERS:
                 return True
         return False
+
+    @property
+    def is_list_item(self):
+        """
+        :return:
+        """
+        stripped = self.line.lstrip()
+        if stripped.startswith('- ') or stripped.startswith('* '):
+            self.list_item_prefix = '  '
+            return True
+        numbered_list = NUMBERED_LIST_PATTERN.match(stripped)
+        if numbered_list:
+
+            self.list_item_prefix = len(numbered_list.group())*" "
+            return True
+
+
 
 
 def is_section_heading(current_line, prev_line, next_line):
@@ -224,24 +253,28 @@ class TextToRest:
             self.outputs.append(
                 {"out": ".. {}".format(
                     stripped_text),
-                "original": line_obj.original_line})
+                "original": line_obj.original_line,
+                "line_obj": line_obj})
             self.outputs.append({"out": os.linesep})
         else:
             self.outputs.append(
                 {"out": "{}{}".format(
                     " " * (6 + len(self.last_ref_id)),
                     stripped_text),
-                "original": line_obj.original_line
+                "original": line_obj.original_line,
+                "line_obj": line_obj
                 })
             self.outputs.append({"out": os.linesep})
 
     def handle_paragraph(self, line_obj):
         if line_obj.is_indented:
             self.outputs.append({"out": line_obj.deindent,
-                                 "original": line_obj.original_line})
+                                 "original": line_obj.original_line,
+                                 "line_obj": line_obj})
         elif not line_obj.is_content_type_header:
             self.outputs.append({"out": line_obj.output,
-                                 "original": line_obj.original_line})
+                                 "original": line_obj.original_line,
+                                 "line_obj": line_obj})
 
     def convert(self):
         """
@@ -258,6 +291,19 @@ class TextToRest:
 
                 if not current_line_obj.is_blank:
                     found_blank_line = False
+
+                    prev_line = self.outputs[-1]
+                    prev_line_obj = LineObj(prev_line['out'])
+                    if prev_line.get('line_obj'):
+                        prev_line_obj = prev_line['line_obj']
+
+                    if (prev_line_obj.is_list_item
+                        or prev_line_obj.list_item_overflow) \
+                            and not current_line_obj.is_list_item:
+                        current_line_obj.list_item_overflow = True
+                        current_line_obj.list_item_prefix = \
+                            prev_line_obj.list_item_prefix
+
                     # look up the preceeding lines
                     # if the paragraph above is indented less than current
                     # and ends with colon,
@@ -276,6 +322,9 @@ class TextToRest:
                             if seen_obj.ends_with_colon:
                                 current_line_obj.is_code_block = True
                             break
+
+                else:
+                    current_line_obj.list_item_overflow = False
 
                 if index < (len(self.all_lines) - 1):
                     next_line_obj = LineObj(self.all_lines[index+1].rstrip())
@@ -296,10 +345,13 @@ class TextToRest:
                         self.outputs.append({"out": os.linesep})
 
                     self.outputs.append({"out": stripped,
-                                         "original": current_line_obj.original_line})
+                                         "original": current_line_obj.original_line,
+                                         "line_obj": current_line_obj
+                                         })
                     self.outputs.append({"out": os.linesep})
                     self.outputs.append(
-                        {"out": current_line_obj.section_header_underline})
+                        {"out": current_line_obj.section_header_underline,
+                         "line_obj": current_line_obj})
                     self.outputs.append({"out": os.linesep})
 
                     if stripped.lower() == "References".lower():
