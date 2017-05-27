@@ -1,5 +1,6 @@
 import os
 from argparse import ArgumentParser
+from textwrap import fill
 import re
 
 PEP_HEADERS = [
@@ -26,8 +27,10 @@ INLINE_LITERALS = []
 with open("./inline-literals.txt") as file:
     INLINE_LITERALS = [line.strip() for line in file.readlines()]
 
-
 NUMBERED_LIST_PATTERN = re.compile("\d+\. +")
+
+LINE_LENGTH = 79
+
 
 class LineObj:
     """
@@ -71,16 +74,17 @@ class LineObj:
             multiplier = 4
         else:
             multiplier = 3
+
         if self.indentation_level >= 1:
             if self.list_item_overflow:
                 return "{}{}{}{}".format(" " * multiplier * (self.indentation_level -1),
-                                 self.list_item_prefix,
-                                 self.output.strip(),
-                                 os.linesep)
+                                         self.list_item_prefix,
+                                         self.output.strip(),
+                                         os.linesep)
             else:
                 return "{}{}{}".format(" " * multiplier * (self.indentation_level -1),
-                                 self.output.strip(),
-                                 os.linesep)
+                                       self.output.strip(),
+                                       os.linesep)
         else:
             return self.output
 
@@ -105,7 +109,6 @@ class LineObj:
                     if inline_literal in self.line and not self.is_pep_header:
                         self.line = self.line.replace(
                             inline_literal, "``{}``".format(inline_literal))
-
             if self.ends_with_colon \
                     and not self.is_pep_header \
                     and not self.is_code_block:
@@ -151,11 +154,9 @@ class LineObj:
             return True
         numbered_list = NUMBERED_LIST_PATTERN.match(stripped)
         if numbered_list:
-
-            self.list_item_prefix = len(numbered_list.group())*" "
+            self.list_item_prefix = len(numbered_list.group()) * " "
             return True
-
-
+        return False
 
 
 def is_section_heading(current_line, prev_line, next_line):
@@ -224,9 +225,7 @@ class TextToRest:
             # ensure it is reST
             self.outputs.append({"out": "Content-Type: text/x-rst"})
             self.outputs.append({"out": os.linesep})
-        elif is_missing_content_type_header(
-                current_line,
-                prev_line):
+        elif is_missing_content_type_header(current_line, prev_line):
             # content type header is missing, inject it
             self.outputs.append({"out": "Content-Type: text/x-rst"})
             self.outputs.append({"out": os.linesep})
@@ -251,22 +250,50 @@ class TextToRest:
                 stripped_text[stripped_text.index("[")+1:stripped_text.index("]")]
             self.references.append(self.last_ref_id)
             self.outputs.append(
-                {"out": ".. {}".format(
-                    stripped_text),
-                "original": line_obj.original_line,
-                "line_obj": line_obj})
+                {"out": ".. {}".format(stripped_text),
+                 "original": line_obj.original_line,
+                 "line_obj": line_obj})
             self.outputs.append({"out": os.linesep})
         else:
             self.outputs.append(
-                {"out": "{}{}".format(
-                    " " * (6 + len(self.last_ref_id)),
-                    stripped_text),
-                "original": line_obj.original_line,
-                "line_obj": line_obj
-                })
+                {"out": "{}{}".format(" " * (6 + len(self.last_ref_id)),
+                                      stripped_text),
+                 "original": line_obj.original_line,
+                 "line_obj": line_obj})
             self.outputs.append({"out": os.linesep})
 
-    def handle_paragraph(self, line_obj):
+    def process_section_heading(self, line_obj):
+        stripped = line_obj.line.rstrip(':')
+
+        # ensure there are two blank lines before section heading
+        if len(self.outputs[-2]['out'].strip()) > 0:
+            self.outputs.append({"out": os.linesep})
+
+        self.outputs.append({"out": stripped,
+                             "original": line_obj.original_line,
+                             "line_obj": line_obj
+                             })
+        self.outputs.append({"out": os.linesep})
+        self.outputs.append(
+            {"out": line_obj.section_header_underline,
+             "line_obj": line_obj})
+        self.outputs.append({"out": os.linesep})
+
+        if stripped.lower() == "References".lower():
+            self.is_references_section = True
+            self.has_references_section = True
+        elif self.is_references_section:
+            # we were in references section, and now moved on
+            self.is_references_section = False
+            self.last_ref_id = ""
+
+    def handle_paragraph(self, line_obj, prev_line_obj):
+        if (not line_obj.is_pep_header and
+            len(self.outputs[-1]['out']) > 50 and
+            not line_obj.is_blank):
+            self.outputs[-1]['out'] = ' '.join((self.outputs[-1]['out'].rstrip(),
+                                                line_obj.deindent.lstrip()))
+            return
         if line_obj.is_indented:
             self.outputs.append({"out": line_obj.deindent,
                                  "original": line_obj.original_line,
@@ -275,6 +302,7 @@ class TextToRest:
             self.outputs.append({"out": line_obj.output,
                                  "original": line_obj.original_line,
                                  "line_obj": line_obj})
+
 
     def convert(self):
         """
@@ -285,94 +313,70 @@ class TextToRest:
                 # this is the first line of the file, eg PEP: XXX header
                 # just print it out as is
                 self.outputs.append({"out": line})
+                continue
+
+            prev_line_obj = LineObj(self.all_lines[index - 1].rstrip())
+            current_line_obj = LineObj(line.rstrip())
+
+            if current_line_obj.is_blank:
+                current_line_obj.list_item_overflow = False
             else:
-                prev_line_obj = LineObj(self.all_lines[index-1].rstrip())
-                current_line_obj = LineObj(line.rstrip())
+                found_blank_line = False
 
-                if not current_line_obj.is_blank:
-                    found_blank_line = False
+                prev_line = self.outputs[-1]
+                prev_line_obj = LineObj(prev_line['out'])
+                if prev_line.get('line_obj'):
+                    prev_line_obj = prev_line['line_obj']
 
-                    prev_line = self.outputs[-1]
-                    prev_line_obj = LineObj(prev_line['out'])
-                    if prev_line.get('line_obj'):
-                        prev_line_obj = prev_line['line_obj']
+                if (prev_line_obj.is_list_item 
+                    or prev_line_obj.list_item_overflow) \
+                        and not current_line_obj.is_list_item:
+                    current_line_obj.list_item_overflow = True
+                    current_line_obj.list_item_prefix = \
+                        prev_line_obj.list_item_prefix
 
-                    if (prev_line_obj.is_list_item
-                        or prev_line_obj.list_item_overflow) \
-                            and not current_line_obj.is_list_item:
-                        current_line_obj.list_item_overflow = True
-                        current_line_obj.list_item_prefix = \
-                            prev_line_obj.list_item_prefix
+                # look up the preceeding lines
+                # if the paragraph above is indented less than current
+                # and ends with colon,
+                # then the current line is likely a code block
+                for seen in reversed(self.outputs):
+                    seen_obj = LineObj(seen['out'])
+                    if seen.get('original'):
+                        seen_obj = LineObj(seen['original'])
 
-                    # look up the preceeding lines
-                    # if the paragraph above is indented less than current
-                    # and ends with colon,
-                    # then the current line is likely a code block
-                    for seen in reversed(self.outputs):
-                        seen_obj = LineObj(seen['out'])
-                        if seen.get('original'):
-                            seen_obj = LineObj(seen['original'])
+                    if not found_blank_line and seen_obj.is_blank:
+                        found_blank_line = True
 
-                        if not found_blank_line and seen_obj.is_blank:
-                            found_blank_line = True
+                    if found_blank_line and not seen_obj.is_blank \
+                        and seen_obj.indentation_level \
+                                    < current_line_obj.indentation_level:
+                        if seen_obj.ends_with_colon:
+                            current_line_obj.is_code_block = True
+                        break
 
-                        if found_blank_line and not seen_obj.is_blank \
-                            and seen_obj.indentation_level \
-                                        < current_line_obj.indentation_level:
-                            if seen_obj.ends_with_colon:
-                                current_line_obj.is_code_block = True
-                            break
+            if index < (len(self.all_lines) - 1):
+                next_line_obj = LineObj(self.all_lines[index + 1].rstrip())
+            else:
+                next_line_obj = None
 
-                else:
-                    current_line_obj.list_item_overflow = False
+            self.handle_content_type_header(
+                current_line_obj, prev_line_obj)
 
-                if index < (len(self.all_lines) - 1):
-                    next_line_obj = LineObj(self.all_lines[index+1].rstrip())
-                else:
-                    next_line_obj = None
+            if is_section_heading(
+                    current_line_obj,
+                    prev_line_obj,
+                    next_line_obj):
+                self.process_section_heading(current_line_obj)
 
-                self.handle_content_type_header(
-                    current_line_obj, prev_line_obj)
+            elif current_line_obj.is_local_vars:
+                self.has_local_vars_section = True
+                return
 
-                if is_section_heading(
-                        current_line_obj,
-                        prev_line_obj,
-                        next_line_obj):
-                    stripped = current_line_obj.line.rstrip(':')
+            elif self.is_references_section:
+                self.process_reference_line(current_line_obj)
 
-                    # ensure there are two blank lines before section heading
-                    if len(self.outputs[-2]['out'].strip()) > 0:
-                        self.outputs.append({"out": os.linesep})
-
-                    self.outputs.append({"out": stripped,
-                                         "original": current_line_obj.original_line,
-                                         "line_obj": current_line_obj
-                                         })
-                    self.outputs.append({"out": os.linesep})
-                    self.outputs.append(
-                        {"out": current_line_obj.section_header_underline,
-                         "line_obj": current_line_obj})
-                    self.outputs.append({"out": os.linesep})
-
-                    if stripped.lower() == "References".lower():
-                        self.is_references_section = True
-                        self.has_references_section = True
-                    elif self.is_references_section:
-                        # we were in references section, and now moved on
-                        self.is_references_section = False
-                        self.last_ref_id = ""
-
-                elif current_line_obj.is_local_vars:
-                    self.has_local_vars_section = True
-                    return
-
-                else:
-                    if self.is_references_section:
-                        self.process_reference_line(current_line_obj)
-                    else:
-                        self.handle_paragraph(
-                            current_line_obj
-                        )
+            else:
+                self.handle_paragraph(current_line_obj, prev_line_obj)
 
     def link_references(self):
         """
@@ -405,7 +409,12 @@ class TextToRest:
         """
         with open(self.out_filename, 'w+') as file:
             for line_dict in self.outputs:
-                file.write(line_dict['out'])
+                out = line_dict['out']
+                if len(out) <= LINE_LENGTH:
+                    file.write(out)
+                else:
+                    file.write(fill(out, LINE_LENGTH))
+                    file.write(os.linesep)
 
 
 def restify(pep_filename):
